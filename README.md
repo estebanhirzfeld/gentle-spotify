@@ -20,10 +20,27 @@ INTEGRATIONS (2)
 - **Plays in your real Spotify app.** Your account, your library, your devices. Not a separate player.
 - **Optional sidebar row.** One line under INTEGRATIONS; turn it off with `/sp sidebar off`.
 
+## How it works
+
+Two halves, because the Spotify app can only play a track by its URI:
+
+1. **Search** goes to the Spotify Web API with your developer credentials (client-credentials token, cached),
+   and the extension picks the best match deterministically.
+2. **Playback** goes to the Spotify app on your Mac through AppleScript (`osascript`): play, pause, next,
+   previous, and reading what is playing.
+
+That second half is why it is **macOS only**: AppleScript is how macOS apps are controlled. Spotify brings
+its window to the front when it starts a track; the extension hands focus straight back to the app you were
+using (it waits at most one second, and only for that command).
+
 ## Requirements
 
 - macOS with the Spotify desktop app installed.
-- A free Spotify developer app, used only for search (see [Setup](#setup)).
+- A Spotify developer app of your own, used only for search (see [Setup](#setup)). Creating one is free, but
+  Spotify's docs state that "the app owner must have a Spotify Premium account for apps in development mode to
+  function" ([quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes)).
+- Use **your own** credentials. Never share them or ship them in a package: the client secret identifies your
+  developer account, and every request made with it counts against your account's quota.
 - Gentle Shell, or any Pi build with extension support.
 
 ## Install

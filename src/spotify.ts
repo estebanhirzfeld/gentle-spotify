@@ -231,6 +231,27 @@ function guarded(lines: string[]): string[] {
 	];
 }
 
+/**
+ * Spotify brings its window to the front on `play track` (measured: about 50 ms after the command).
+ * Remember the front app, then hand focus back as soon as it changes, waiting at most 1 second.
+ * `path to frontmost application` and `activate` need no extra macOS permission.
+ * Only `play track` steals focus (play, playpause and state reads were measured not to), so only it
+ * pays this bounded wait.
+ */
+function keepFocus(lines: string[]): string[] {
+	return [
+		"set frontApp to path to frontmost application as text",
+		...lines,
+		"repeat 20 times",
+		"delay 0.05",
+		"if (path to frontmost application as text) is not frontApp then",
+		"tell application frontApp to activate",
+		"exit repeat",
+		"end if",
+		"end repeat",
+	];
+}
+
 const STATE_SCRIPT = [
 	'if application "Spotify" is running then',
 	'tell application "Spotify"',
@@ -359,7 +380,7 @@ export function createSpotify(deps: SpotifyDeps) {
 	}
 
 	async function playUri(uri: string): Promise<void> {
-		await osa([`tell application "Spotify" to play track "${uri}"`]);
+		await osa(keepFocus([`tell application "Spotify" to play track "${uri}"`]));
 	}
 
 	return {

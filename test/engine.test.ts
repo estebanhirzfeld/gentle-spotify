@@ -258,3 +258,29 @@ test("S1: toggle sends playpause and reports the resulting state", async () => {
 	assert.equal(await createSpotify(h.deps).toggle(), "⏸ My Name Is — Eminem");
 	assert.ok(h.scripts.some((s) => /to playpause$/m.test(s)));
 });
+
+test("focus: playing a track hands focus back to the app that was in front", async () => {
+	const h = harness();
+	const sp = createSpotify(h.deps);
+	await sp.play("My name is Eminem");
+	await sp.play("spotify:track:75IN3CtuZwTHTnZvYM4qnJ");
+	const plays = playScripts(h);
+	assert.equal(plays.length, 2);
+	for (const s of plays) {
+		const lines = s.split("\n");
+		assert.equal(lines[0], "set frontApp to path to frontmost application as text", "remembers the front app first");
+		assert.ok(lines.indexOf("tell application frontApp to activate") > lines.findIndex((l) => l.includes("play track")), "restores after playing");
+		assert.match(s, /repeat 20 times\ndelay 0\.05\n/, "bounded wait: at most 1 second");
+		assert.match(s, /exit repeat/, "stops as soon as focus is restored");
+	}
+});
+
+test("focus: commands that never steal focus get no extra wait", async () => {
+	const h = harness();
+	const sp = createSpotify(h.deps);
+	await sp.toggle();
+	await sp.play("");
+	await sp.pause();
+	await sp.nowPlaying();
+	for (const s of h.scripts) assert.ok(!s.includes("frontmost"), s);
+});

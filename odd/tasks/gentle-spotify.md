@@ -66,3 +66,10 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
 - L8 (user, verbatim): "cpaz abarca muchos comandos, no seria mejor unificarlos de alguna manera?" — chose
   "/sp (recomendado)": one command, bare `/sp` toggles play/pause, whole-argument keyword rule, `/sp play <x>` forces
   a search. Done before publishing so no consumer depends on the old names.
+- L9 (user, verbatim): "si" (add the Premium note) and "al ejecutar un comando, se me abre spotify o mejor dicho se
+  me cambia la ventana a spotify, se puede evitar eso?" — reproduced live: `play track` steals focus ~50 ms after the
+  command; `play`, `playpause` and state reads do not (next/prev not measured: they change the track). Fixed with
+  `keepFocus` (remember `path to frontmost application`, re-activate it when it changes, at most 1 s) on `play track`
+  only; restoring focus was verified live with no permission prompt. README: Premium note (Spotify quota-modes doc),
+  own-credentials warning, "How it works" (macOS only). A probe of two quick playpauses left Spotify paused; it was
+  resumed immediately and no further playback probes were run.
