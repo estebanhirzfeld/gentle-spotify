@@ -4,3 +4,5 @@ node_modules/
 credentials
 token
 *.log
+# Local Gentle AI skill-registry cache
+.atl/
