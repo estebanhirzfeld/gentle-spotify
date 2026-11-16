@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.png" alt="gentle-spotify logo" width="160"></p>
+
 # gentle-spotify
 
 ![macOS: supported](https://img.shields.io/badge/macOS-supported-brightgreen) ![Linux: experimental](https://img.shields.io/badge/Linux-experimental-orange)

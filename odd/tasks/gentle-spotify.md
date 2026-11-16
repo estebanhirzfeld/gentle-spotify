@@ -48,7 +48,8 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
 - [x] T3 S1,S2,S3,S6 — L8 done: single `/sp` command with `parseSp` (fixed forms, else search) and engine `toggle()`; 58 tests; loads under jiti. Commit: refactor: unify commands into /sp. Previously: — extension `src/extension.ts`: commands, sidebar row, toggle persistence. inline (worker unavailable: session cwd ~/Desktop is not a git repo), test-first. 21 tests (48 total); loads under Gentle Shell's jiti 2.7.0. Commit: feat: add slash commands and sidebar row.
 - [x] T4 S5 — L8 done: README documents /sp, its fixed forms and the controls-versus-songs rule. Commit: docs: document /sp. Previously: — README (install, commands, Gentle Hub topics), local install in Gentle Shell, live check. inline. Commit: docs: add README. Installed as local package in ~/.gentle-shell/agent/settings.json (backup *.bak-20261116-182238-pre-gentle-spotify); `gentle-shell list` shows it; every AppleScript compiles with osacompile; live nowPlaying + search ranking checked. Not run live: pause/next/prev/play (would change the user's playback).
 
-- [ ] T5 S7 — Linux backend + platform split + clipboard + README badges. subagent (repository_root consent L10), test-first.
+- [x] T5 S7 — Linux backend + platform split + clipboard + README badges. subagent (repository_root consent L10), test-first. Commits 246347a, 249f3fe; parent review pinned the test platform (suite passes on a simulated Linux host). 86 tests.
+- [x] T6 — logo as-is in assets/logo.png and at the top of the README (L11).
 
 ## Log
 
@@ -86,3 +87,6 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
   metemos un logo o algo asi?" and "Sí, usá un subagente" (consent to a subagent working in ~/Desktop/gentle-spotify).
   Interpretation: experimental Linux support plus README platform badges; a package logo/gallery image is offered
   separately, not built.
+- L11 (user, verbatim): "te dejo un logo en ~/Desktop/gentleman+spotify.png"; told that Spotify's design guidelines
+  forbid logos with Spotify brand elements, co-branding, and "Spotify" in an app name, the user answered "dejalo como
+  esta" (name) and "dejalo asi" (logo): name kept, logo shipped unchanged. User's decision, risk disclosed.
