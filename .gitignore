@@ -1,0 +1,6 @@
+node_modules/
+.DS_Store
+# Never commit credentials or token caches, even if someone points SPOTIFY_CLI_DIR here.
+credentials
+token
+*.log
