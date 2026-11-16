@@ -284,3 +284,26 @@ test("focus: commands that never steal focus get no extra wait", async () => {
 	await sp.nowPlaying();
 	for (const s of h.scripts) assert.ok(!s.includes("frontmost"), s);
 });
+
+test("S7: the default platform picks the macOS player on darwin", { skip: process.platform !== "darwin" }, async () => {
+	const h = harness();
+	await createSpotify(h.deps).toggle();
+	assert.ok(h.scripts.some((s) => /to playpause$/m.test(s)), "toggle goes through osascript");
+});
+
+test("S7: an unsupported platform fails playback clearly and search still works", async () => {
+	const h = harness();
+	const sp = createSpotify({ ...h.deps, platform: "win32" });
+	const expected = /gentle-spotify supports macOS and Linux \(experimental\); this platform is win32\./;
+	await assert.rejects(sp.play(""), expected);
+	await assert.rejects(sp.play("My name is Eminem"), expected);
+	await assert.rejects(sp.play("spotify:track:75IN3CtuZwTHTnZvYM4qnJ"), expected);
+	await assert.rejects(sp.toggle(), expected);
+	await assert.rejects(sp.pause(), expected);
+	await assert.rejects(sp.next(), expected);
+	await assert.rejects(sp.prev(), expected);
+	await assert.rejects(sp.nowPlaying(), expected);
+	assert.equal(h.scripts.length, 0, "no osascript calls on an unsupported platform");
+	const msg = await sp.check(); // search never touches the platform player
+	assert.match(msg, /^Credentials OK/);
+});

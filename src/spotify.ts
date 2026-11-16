@@ -1,18 +1,20 @@
 /**
  * Spotify engine: credentials, token cache, search, deterministic ranking and
- * AppleScript control of the macOS Spotify app.
+ * playback control of the local Spotify app.
  *
- * Everything that touches the outside world (network, osascript, clock) is
- * injected through SpotifyDeps, so the whole engine runs under tests without a
+ * Everything that touches the outside world (network, osascript, dbus-send, clock)
+ * is injected through SpotifyDeps, so the whole engine runs under tests without a
  * network or a real Spotify app.
  *
- * Why two halves: the app's AppleScript dictionary can only play a track by URI
- * ("play track" in Spotify.sdef), so name -> URI goes through the Web API search
- * and playback goes through osascript on the local app.
+ * Why two halves: the app can only play a track by URI (AppleScript "play track",
+ * MPRIS OpenUri), so name -> URI goes through the Web API search and playback goes
+ * through the platform player: AppleScript on macOS, MPRIS D-Bus on Linux (experimental).
  */
 import { execFile } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createMacOSPlayer } from "./players/macos.ts";
+import { createLinuxPlayer } from "./players/linux.ts";
 
 // ---------------------------------------------------------------- types
 
@@ -47,10 +49,17 @@ export interface SpotifyDeps {
 	apiBase?: string;
 	tokenUrl?: string;
 	market?: string;
+	/** Defaults to process.platform: darwin → AppleScript, linux → MPRIS (experimental). */
+	platform?: string;
 }
 
 export class SpotifyError extends Error {
 	override name = "SpotifyError";
+}
+
+/** Message for platforms with no player backend; search (via check) still works there. */
+export function unsupportedPlatformMessage(platform: string): string {
+	return `gentle-spotify supports macOS and Linux (experimental); this platform is ${platform}.`;
 }
 
 export type CredentialField = "clientId" | "clientSecret";
@@ -218,70 +227,42 @@ function loadCredentials(dir: string): { id: string; secret: string } {
 	return { id, secret };
 }
 
-// ------------------------------------------------------------ AppleScript
-
-function guarded(lines: string[]): string[] {
-	return [
-		'if application "Spotify" is running then',
-		...lines,
-		'return "ok"',
-		"else",
-		'return "closed"',
-		"end if",
-	];
-}
+// ------------------------------------------------------------ platform players
 
 /**
- * Spotify brings its window to the front on `play track` (measured: about 50 ms after the command).
- * Remember the front app, then hand focus back as soon as it changes, waiting at most 1 second.
- * `path to frontmost application` and `activate` need no extra macOS permission.
- * Only `play track` steals focus (play, playpause and state reads were measured not to), so only it
- * pays this bounded wait.
+ * Platform-specific playback backend. macOS controls the app with AppleScript;
+ * Linux (experimental) uses the app's MPRIS D-Bus interface through dbus-send.
+ * Search and credentials are platform-independent and live in this module.
  */
-function keepFocus(lines: string[]): string[] {
-	return [
-		"set frontApp to path to frontmost application as text",
-		...lines,
-		"repeat 20 times",
-		"delay 0.05",
-		"if (path to frontmost application as text) is not frontApp then",
-		"tell application frontApp to activate",
-		"exit repeat",
-		"end if",
-		"end repeat",
-	];
+export interface Player {
+	/** Resumes playback. On macOS this may launch a closed Spotify (like play). */
+	resume(): Promise<void>;
+	/** Plays an already validated `spotify:track:<id>` URI. */
+	playUri(uri: string): Promise<void>;
+	/** Play/pause toggle. User-initiated, so on macOS it may launch a closed Spotify. */
+	toggle(): Promise<void>;
+	/** pause/next/prev. Returns false when Spotify is not running (nothing was sent). */
+	control(verb: "pause" | "next" | "prev"): Promise<boolean>;
+	nowPlaying(): Promise<NowPlaying>;
 }
 
-const STATE_SCRIPT = [
-	'if application "Spotify" is running then',
-	'tell application "Spotify"',
-	"set s to (player state as string)",
-	'if s is "stopped" then return "stopped"',
-	"return s & tab & (name of current track) & tab & (artist of current track)",
-	"end tell",
-	"else",
-	'return "closed"',
-	"end if",
-];
-
-function parseState(stdout: string): NowPlaying {
-	const [state, name = "", artist = ""] = stdout.replace(/\n$/, "").split("\t");
-	if (state === "playing" || state === "paused") return { state, name, artist };
-	if (state === "stopped") return { state: "stopped" };
-	return { state: "closed" };
+function unsupportedPlayer(platform: string): Player {
+	const fail = (): never => {
+		throw new SpotifyError(unsupportedPlatformMessage(platform));
+	};
+	return {
+		resume: async () => fail(),
+		playUri: async () => fail(),
+		toggle: async () => fail(),
+		control: async () => fail(),
+		nowPlaying: async () => fail(),
+	};
 }
 
-export function formatNowPlaying(np: NowPlaying): string {
-	switch (np.state) {
-		case "playing":
-			return `▶ ${np.name} — ${np.artist}`;
-		case "paused":
-			return `⏸ ${np.name} — ${np.artist}`;
-		case "stopped":
-			return "■ Stopped";
-		case "closed":
-			return "Spotify is not running";
-	}
+function createPlayer(platform: string, run: Runner): Player {
+	if (platform === "darwin") return createMacOSPlayer(run);
+	if (platform === "linux") return createLinuxPlayer(run);
+	return unsupportedPlayer(platform);
 }
 
 // ---------------------------------------------------------------- engine
@@ -293,13 +274,16 @@ export function createSpotify(deps: SpotifyDeps) {
 	const tokenUrl = deps.tokenUrl ?? "https://accounts.spotify.com/api/token";
 	const market = deps.market ?? "AR";
 	const tokenFile = join(deps.configDir, "token");
+	const player = createPlayer(deps.platform ?? process.platform, deps.run);
 
-	async function osa(lines: string[]): Promise<string> {
-		const result = await deps.run("osascript", lines.flatMap((line) => ["-e", line]));
-		if (result.code !== 0) {
-			throw new SpotifyError(`osascript failed: ${result.stderr.trim() || `exit code ${result.code}`}`);
-		}
-		return result.stdout.trim();
+	async function settleReport(): Promise<string> {
+		await sleep(SETTLE_MS);
+		return formatNowPlaying(await player.nowPlaying());
+	}
+
+	async function control(verb: "pause" | "next" | "prev"): Promise<string> {
+		if (!(await player.control(verb))) return formatNowPlaying({ state: "closed" });
+		return settleReport();
 	}
 
 	async function request(url: string, init?: RequestInit): Promise<Response> {
@@ -368,38 +352,21 @@ export function createSpotify(deps: SpotifyDeps) {
 			}));
 	}
 
-	async function nowPlaying(): Promise<NowPlaying> {
-		return parseState(await osa(STATE_SCRIPT));
-	}
-
-	async function control(verb: "pause" | "next track" | "previous track"): Promise<string> {
-		const out = await osa(guarded([`tell application "Spotify" to ${verb}`]));
-		if (out === "closed") return formatNowPlaying({ state: "closed" });
-		await sleep(SETTLE_MS);
-		return formatNowPlaying(await nowPlaying());
-	}
-
-	async function playUri(uri: string): Promise<void> {
-		await osa(keepFocus([`tell application "Spotify" to play track "${uri}"`]));
-	}
-
 	return {
-		nowPlaying,
+		nowPlaying: () => player.nowPlaying(),
 
 		/** Resumes when the query is empty; plays a URI/link directly; otherwise searches. */
 		async play(query: string, options: { artist?: string } = {}): Promise<string> {
 			const text = query.trim();
 			if (!text) {
-				await osa(['tell application "Spotify" to play']);
-				await sleep(SETTLE_MS);
-				return formatNowPlaying(await nowPlaying());
+				await player.resume();
+				return settleReport();
 			}
 
 			const ref = parseTrackRef(text);
 			if (ref) {
-				await playUri(ref);
-				await sleep(SETTLE_MS);
-				return formatNowPlaying(await nowPlaying());
+				await player.playUri(ref);
+				return settleReport();
 			}
 
 			const track = pickTrack(text, await search(text, options.artist), options.artist);
@@ -407,21 +374,20 @@ export function createSpotify(deps: SpotifyDeps) {
 				const by = options.artist ? ` by "${options.artist}"` : "";
 				throw new SpotifyError(`No track found for "${text}"${by}.`);
 			}
-			await playUri(track.uri);
+			await player.playUri(track.uri);
 			const album = track.album ? ` (${track.album}${track.year ? `, ${track.year}` : ""})` : "";
 			return `▶ ${track.name} — ${track.artists.join(", ")}${album}`;
 		},
 
-		/** Play/pause toggle. User-initiated, so it may launch a closed Spotify (like play). */
+		/** Play/pause toggle. User-initiated, so it may launch a closed Spotify on macOS. */
 		async toggle(): Promise<string> {
-			await osa(['tell application "Spotify" to playpause']);
-			await sleep(SETTLE_MS);
-			return formatNowPlaying(await nowPlaying());
+			await player.toggle();
+			return settleReport();
 		},
 
 		pause: () => control("pause"),
-		next: () => control("next track"),
-		prev: () => control("previous track"),
+		next: () => control("next"),
+		prev: () => control("prev"),
 
 		/** Gets a token and runs a real search; never plays anything. */
 		async check(): Promise<string> {
@@ -434,11 +400,26 @@ export function createSpotify(deps: SpotifyDeps) {
 
 export type Spotify = ReturnType<typeof createSpotify>;
 
+export function formatNowPlaying(np: NowPlaying): string {
+	switch (np.state) {
+		case "playing":
+			return `▶ ${np.name} — ${np.artist}`;
+		case "paused":
+			return `⏸ ${np.name} — ${np.artist}`;
+		case "stopped":
+			return "■ Stopped";
+		case "closed":
+			return "Spotify is not running";
+	}
+}
+
 /** Runner for use outside Pi (pi.exec is preferred inside the extension). */
 export const nodeRunner: Runner = (command, args) =>
 	new Promise((resolve) => {
 		execFile(command, args, { timeout: 10_000 }, (error, stdout, stderr) => {
-			const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
+			// A missing binary (ENOENT) is reported as the shell convention 127 so
+			// platform players can tell "not installed" from "failed".
+			const code = error ? (typeof error.code === "number" ? error.code : error.code === "ENOENT" ? 127 : 1) : 0;
 			resolve({ code, stdout: String(stdout), stderr: String(stderr) });
 		});
 	});
