@@ -79,7 +79,7 @@ function setup(
 	const ext = createExtension({
 		configDir: dir,
 		spotify: engine,
-		platform: platformOpts.platform,
+		platform: platformOpts.platform ?? "darwin", // pinned so the suite passes on any host
 		env: platformOpts.env,
 		setInterval: (fn: () => void) => {
 			const t = { fn, cleared: false, unrefed: false, unref() { this.unrefed = true; } };

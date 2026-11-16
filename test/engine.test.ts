@@ -86,6 +86,8 @@ function harness(opts: { creds?: boolean; tokenStatus?: number; state?: string; 
 			sleep: async () => {},
 			apiBase: "https://api.test",
 			tokenUrl: "https://accounts.test/api/token",
+			// Pin the platform: these tests assert macOS scripts and must pass on any host.
+			platform: "darwin",
 		},
 	};
 }
