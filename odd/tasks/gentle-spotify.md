@@ -35,7 +35,7 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
 - [x] T1 S5 — scaffold: package.json manifest, LICENSE, .gitignore, this document. inline. Commit eb3c4ab.
 - [x] T2 S2,S4,S6 — engine `src/spotify.ts`: credentials, token cache, search, ranking, AppleScript, state. inline, test-first. 27 tests; live state + ranking checked. Commit: see git log (feat: add Spotify engine).
 - [x] T3 S1,S2,S3,S6 — extension `src/extension.ts`: commands, sidebar row, toggle persistence. inline (worker unavailable: session cwd ~/Desktop is not a git repo), test-first. 21 tests (48 total); loads under Gentle Shell's jiti 2.7.0. Commit: feat: add slash commands and sidebar row.
-- [ ] T4 S5 — README (install, commands, Gentle Hub topics), local install in Gentle Shell, live check. inline.
+- [x] T4 S5 — README (install, commands, Gentle Hub topics), local install in Gentle Shell, live check. inline. Commit: docs: add README. Installed as local package in ~/.gentle-shell/agent/settings.json (backup *.bak-20261116-182238-pre-gentle-spotify); `gentle-shell list` shows it; every AppleScript compiles with osacompile; live nowPlaying + search ranking checked. Not run live: pause/next/prev/play (would change the user's playback).
 
 ## Log
 
@@ -55,3 +55,4 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
   "My name is Eminem"; the bash `play` script overwrote `query` with each unquoted word, so it searched
   only "Eminem". Fixed in `~/.local/bin/play` (outside this repo) with a RED-then-GREEN selftest. The
   extension receives one argument string, so it is not affected; `pickTrack` still re-ranks deterministically.
+- L6 (evidence): the remote GitHub repo, push and topics were not created; publishing stays the user's decision (S5).
