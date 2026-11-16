@@ -31,7 +31,7 @@ interface UI {
 interface Ctx {
 	ui: UI;
 }
-type Engine = Pick<Spotify, "play" | "pause" | "next" | "prev" | "nowPlaying" | "check">;
+type Engine = Pick<Spotify, "play" | "toggle" | "pause" | "next" | "prev" | "nowPlaying" | "check">;
 type Timer = { unref?: () => void } | number | undefined;
 interface Reply {
 	message: string;
@@ -45,16 +45,50 @@ export interface ExtensionOptions {
 	clearInterval?: (timer: Timer) => void;
 }
 
-const USAGE = `Spotify commands:
-  /play <song or artist>       play the best match (--artist <name> filters; spotify:track: URIs and open.spotify.com links work)
-  /play                        resume
-  /pause  /next  /prev         playback controls
-  /np                          what is playing now
-  /spotify setup [id|secret]   paste a credential from the clipboard (never shown, clipboard cleared)
-  /spotify check               verify credentials without playing anything
-  /spotify sidebar on|off      show or hide the now-playing row in the sidebar`;
+const USAGE = `/sp — Spotify:
+  /sp <song or artist>       play the best match (--artist <name> filters; spotify:track: URIs and open.spotify.com links work)
+  /sp                        play/pause
+  /sp play                   resume        /sp play <text>   always search <text>, even "next"
+  /sp pause  /sp next  /sp prev  /sp np    controls and what is playing now
+  /sp setup [id|secret]      paste a credential from the clipboard (never shown, clipboard cleared)
+  /sp check                  verify credentials without playing anything
+  /sp sidebar on|off         show or hide the now-playing row in the sidebar
+The whole argument must match one of these forms exactly; anything else is a song search.`;
 
-const COMPLETIONS = ["setup", "setup id", "setup secret", "check", "sidebar on", "sidebar off", "help"];
+/** Fixed forms, matched against the whole (case-insensitive, space-normalized) argument. */
+const FIXED: Record<string, SpAction> = {
+	"": { kind: "toggle" },
+	play: { kind: "resume" },
+	pause: { kind: "pause" },
+	next: { kind: "next" },
+	prev: { kind: "prev" },
+	np: { kind: "np" },
+	check: { kind: "check" },
+	help: { kind: "help" },
+	setup: { kind: "setup", field: undefined },
+	"setup id": { kind: "setup", field: "clientId" },
+	"setup secret": { kind: "setup", field: "clientSecret" },
+	"sidebar on": { kind: "sidebar", on: true },
+	"sidebar off": { kind: "sidebar", on: false },
+};
+
+const COMPLETIONS = Object.keys(FIXED).filter(Boolean);
+
+export type SpAction =
+	| { kind: "toggle" | "resume" | "pause" | "next" | "prev" | "np" | "check" | "help" }
+	| { kind: "setup"; field: CredentialField | undefined }
+	| { kind: "sidebar"; on: boolean }
+	| { kind: "search"; query: string; artist: string | undefined };
+
+/** Deterministic: a fixed form only when the whole argument matches it; otherwise a song search. */
+export function parseSp(args: string): SpAction {
+	const text = args.trim();
+	const fixed = FIXED[text.toLowerCase().replace(/\s+/g, " ")];
+	if (fixed) return fixed;
+	const forced = /^play\s+([\s\S]+)$/i.exec(text);
+	const { query, artist } = parsePlayArgs(forced ? forced[1] : text);
+	return { kind: "search", query, artist };
+}
 
 export function defaultConfigDir(): string {
 	return process.env.SPOTIFY_CLI_DIR || join(homedir(), ".config", "spotify-cli");
@@ -141,12 +175,7 @@ export function createExtension(options: ExtensionOptions = {}) {
 			};
 		}
 
-		async function setup(arg: string): Promise<Reply> {
-			let field: CredentialField | undefined;
-			if (arg === "id") field = "clientId";
-			else if (arg === "secret") field = "clientSecret";
-			else if (arg) throw new Error(`Unknown field "${arg}": use /spotify setup id or /spotify setup secret.`);
-
+		async function setup(field: CredentialField | undefined): Promise<Reply> {
 			const clip = await exec("pbpaste", [], 5_000);
 			if (clip.code !== 0) throw new Error(`Could not read the clipboard: ${clip.stderr.trim()}`);
 			const written = saveCredential(configDir, clip.stdout, field); // validates before writing
@@ -156,8 +185,8 @@ export function createExtension(options: ExtensionOptions = {}) {
 			const label = written === "clientId" ? "Client ID" : "Client secret";
 			const nextStep =
 				written === "clientId"
-					? "Now copy the Client secret and run /spotify setup again."
-					: "Run /spotify check to verify.";
+					? "Now copy the Client secret and run /sp setup again."
+					: "Run /sp check to verify.";
 			return cleared
 				? { message: `Saved the ${label} (${length} characters) and cleared the clipboard. ${nextStep}`, level: "info" }
 				: {
@@ -166,9 +195,8 @@ export function createExtension(options: ExtensionOptions = {}) {
 					};
 		}
 
-		async function sidebar(arg: string): Promise<string> {
-			if (arg !== "on" && arg !== "off") throw new Error(`Use /spotify sidebar on or /spotify sidebar off.\n\n${USAGE}`);
-			enabled = arg === "on";
+		function sidebar(on: boolean): string {
+			enabled = on;
 			writeSidebarSetting(configDir, enabled);
 			if (enabled) {
 				startPolling();
@@ -191,42 +219,38 @@ export function createExtension(options: ExtensionOptions = {}) {
 			stopPolling();
 		});
 
-		pi.registerCommand("play", {
-			description: "Spotify: play a song (/play <song or artist>), or resume with no argument",
-			handler: command(async (args) => {
-				const { query, artist } = parsePlayArgs(args);
-				return spotify.play(query, { artist });
-			}),
-		});
-		pi.registerCommand("pause", { description: "Spotify: pause", handler: command(() => spotify.pause()) });
-		pi.registerCommand("next", { description: "Spotify: next track", handler: command(() => spotify.next()) });
-		pi.registerCommand("prev", { description: "Spotify: previous track", handler: command(() => spotify.prev()) });
-		pi.registerCommand("np", {
-			description: "Spotify: what is playing now",
-			handler: command(async () => formatNowPlaying(await spotify.nowPlaying())),
-		});
-
-		pi.registerCommand("spotify", {
-			description: "Spotify: setup, check, sidebar on|off, help",
+		pi.registerCommand("sp", {
+			description: "Spotify: /sp <song>, /sp (play/pause), next, prev, np, setup, check, sidebar on|off, help",
 			getArgumentCompletions: (prefix: string) => {
-				const items = COMPLETIONS.filter((c) => c.startsWith(prefix.trimStart())).map((c) => ({ value: c, label: c }));
+				const typed = prefix.trimStart().toLowerCase();
+				const items = COMPLETIONS.filter((c) => c.startsWith(typed)).map((c) => ({ value: c, label: c }));
 				return items.length > 0 ? items : null;
 			},
 			handler: command(async (args) => {
-				const [sub = "", ...rest] = args.trim().split(/\s+/).filter(Boolean);
-				const arg = rest.join(" ");
-				switch (sub) {
-					case "":
+				const action = parseSp(args);
+				switch (action.kind) {
+					case "toggle":
+						return spotify.toggle();
+					case "resume":
+						return spotify.play("");
+					case "search":
+						return spotify.play(action.query, { artist: action.artist });
+					case "pause":
+						return spotify.pause();
+					case "next":
+						return spotify.next();
+					case "prev":
+						return spotify.prev();
+					case "np":
+						return formatNowPlaying(await spotify.nowPlaying());
+					case "check":
+						return spotify.check();
 					case "help":
 						return USAGE;
 					case "setup":
-						return setup(arg);
-					case "check":
-						return spotify.check();
+						return setup(action.field);
 					case "sidebar":
-						return sidebar(arg);
-					default:
-						throw new Error(`Unknown subcommand "${sub}".\n\n${USAGE}`);
+						return sidebar(action.on);
 				}
 			}),
 		});

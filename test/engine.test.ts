@@ -92,7 +92,7 @@ function harness(opts: { creds?: boolean; tokenStatus?: number; state?: string; 
 
 const playScripts = (h: Harness) => h.scripts.filter((s) => s.includes("play track"));
 
-test("S2: /play 'My name is Eminem' plays My Name Is and says so", async () => {
+test("S2: play 'My name is Eminem' plays My Name Is and says so", async () => {
 	const h = harness();
 	const msg = await createSpotify(h.deps).play("My name is Eminem");
 	assert.equal(playScripts(h).length, 1);
@@ -100,7 +100,7 @@ test("S2: /play 'My name is Eminem' plays My Name Is and says so", async () => {
 	assert.equal(msg, "▶ My Name Is — Eminem (The Slim Shady LP, 1999)");
 });
 
-test("S2: /play with no query resumes and reports the state", async () => {
+test("S2: play with no query resumes and reports the state", async () => {
 	const h = harness();
 	const msg = await createSpotify(h.deps).play("");
 	assert.equal(h.fetches.length, 0, "resume needs no network");
@@ -162,7 +162,7 @@ test("--artist with no match fails and plays nothing", async () => {
 
 test("S6: missing credentials fail with the setup hint and play nothing", async () => {
 	const h = harness({ creds: false });
-	await assert.rejects(createSpotify(h.deps).play("anything"), /\/spotify setup/);
+	await assert.rejects(createSpotify(h.deps).play("anything"), /\/sp setup/);
 	assert.equal(h.fetches.length, 0);
 	assert.equal(h.scripts.length, 0);
 });
@@ -170,6 +170,7 @@ test("S6: missing credentials fail with the setup hint and play nothing", async 
 test("S6: rejected credentials fail clearly and play nothing", async () => {
 	const h = harness({ tokenStatus: 401 });
 	await assert.rejects(createSpotify(h.deps).play("anything"), /rejected the credentials/);
+	await assert.rejects(createSpotify(h.deps).play("anything"), /Check them with \/sp setup/);
 	assert.equal(h.scripts.length, 0);
 	await assert.rejects(createSpotify(h.deps).check(), /rejected the credentials/);
 });
@@ -250,4 +251,10 @@ test("item 2: the token cache also tightens an existing open config dir", async 
 	chmodSync(h.dir, 0o755);
 	await createSpotify(h.deps).check();
 	assert.equal(statSync(h.dir).mode & 0o777, 0o700);
+});
+
+test("S1: toggle sends playpause and reports the resulting state", async () => {
+	const h = harness({ state: "paused\tMy Name Is\tEminem" });
+	assert.equal(await createSpotify(h.deps).toggle(), "⏸ My Name Is — Eminem");
+	assert.ok(h.scripts.some((s) => /to playpause$/m.test(s)));
 });

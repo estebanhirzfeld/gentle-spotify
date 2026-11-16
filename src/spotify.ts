@@ -61,7 +61,7 @@ const KEYS: Record<CredentialField, string> = {
 };
 
 const CREDENTIALS_TEMPLATE = `# Spotify developer app credentials (https://developer.spotify.com/dashboard)
-# Keep this file private (mode 600). Fill it with /spotify setup.
+# Keep this file private (mode 600). Fill it with /sp setup.
 SPOTIFY_CLIENT_ID=
 SPOTIFY_CLIENT_SECRET=
 `;
@@ -212,7 +212,7 @@ function loadCredentials(dir: string): { id: string; secret: string } {
 	const secret = values[KEYS.clientSecret] ?? "";
 	if (!id || !secret) {
 		throw new SpotifyError(
-			`Missing Spotify credentials in ${credentialsPath(dir)}. Run /spotify setup to add them.`,
+			`Missing Spotify credentials in ${credentialsPath(dir)}. Run /sp setup to add them.`,
 		);
 	}
 	return { id, secret };
@@ -313,7 +313,7 @@ export function createSpotify(deps: SpotifyDeps) {
 		});
 		if (!response.ok) {
 			throw new SpotifyError(
-				`Spotify rejected the credentials (HTTP ${response.status}). Check them with /spotify setup.`,
+				`Spotify rejected the credentials (HTTP ${response.status}). Check them with /sp setup.`,
 			);
 		}
 		const body = (await response.json()) as { access_token?: string; expires_in?: number };
@@ -389,6 +389,13 @@ export function createSpotify(deps: SpotifyDeps) {
 			await playUri(track.uri);
 			const album = track.album ? ` (${track.album}${track.year ? `, ${track.year}` : ""})` : "";
 			return `▶ ${track.name} — ${track.artists.join(", ")}${album}`;
+		},
+
+		/** Play/pause toggle. User-initiated, so it may launch a closed Spotify (like play). */
+		async toggle(): Promise<string> {
+			await osa(['tell application "Spotify" to playpause']);
+			await sleep(SETTLE_MS);
+			return formatNowPlaying(await nowPlaying());
 		},
 
 		pause: () => control("pause"),
