@@ -4,9 +4,9 @@ Control the **Spotify app on your Mac** from [Gentle Shell](https://gentlemanpro
 commands, and optionally see what is playing in the sidebar.
 
 ```
-/play Eminem my name is      ▶ My Name Is — Eminem (The Slim Shady LP, 1999)
-/pause                       ⏸ My Name Is — Eminem
-/next                        ▶ Without Me — Eminem
+/sp Eminem my name is        ▶ My Name Is — Eminem (The Slim Shady LP, 1999)
+/sp                          ⏸ My Name Is — Eminem
+/sp next                     ▶ Without Me — Eminem
 ```
 
 ```
@@ -15,9 +15,10 @@ INTEGRATIONS (2)
 - ♪ Eminem — My Name Is
 ```
 
+- **One command.** Everything lives under `/sp`, so it never collides with other extensions.
 - **Deterministic.** Commands run inside the extension, not through the model: same input, same result, no tokens.
 - **Plays in your real Spotify app.** Your account, your library, your devices. Not a separate player.
-- **Optional sidebar row.** One line under INTEGRATIONS; turn it off with `/spotify sidebar off`.
+- **Optional sidebar row.** One line under INTEGRATIONS; turn it off with `/sp sidebar off`.
 
 ## Requirements
 
@@ -40,28 +41,38 @@ the Spotify Web API. That needs a developer app, and it takes about two minutes:
 
 1. Open https://developer.spotify.com/dashboard and choose **Create app**.
 2. Use any name, set the redirect URI to `http://127.0.0.1:8888/callback` (it is not used) and tick **Web API**.
-3. In the app's **Settings**, copy the **Client ID** and run `/spotify setup`.
-4. Copy the **Client secret** and run `/spotify setup` again.
-5. Run `/spotify check`.
+3. In the app's **Settings**, copy the **Client ID** and run `/sp setup`.
+4. Copy the **Client secret** and run `/sp setup` again.
+5. Run `/sp check`.
 
-`/spotify setup` reads the value from the clipboard, never prints it and clears the clipboard afterwards.
+`/sp setup` reads the value from the clipboard, never prints it and clears the clipboard afterwards.
 Credentials live in `~/.config/spotify-cli/credentials` with mode `600`; set `SPOTIFY_CLI_DIR` to use
 another folder.
 
 ## Commands
 
+Everything is one command, `/sp`. Type `/sp ` and press Tab to see the fixed forms.
+
 | Command | What it does |
 | --- | --- |
-| `/play <song or artist>` | Plays the best match. Word order does not matter. |
-| `/play --artist <name> <song>` | Only considers tracks by that artist (use quotes for names with spaces). |
-| `/play spotify:track:<id>` | Plays that exact track; `open.spotify.com/track/...` links work too. |
-| `/play` | Resumes playback. |
-| `/pause`, `/next`, `/prev` | Playback controls; each one reports the resulting state. |
-| `/np` | What is playing now. |
-| `/spotify setup [id\|secret]` | Pastes a credential from the clipboard. |
-| `/spotify check` | Verifies credentials with a search, without playing anything. |
-| `/spotify sidebar on\|off` | Shows or hides the now-playing row. The choice is remembered. |
-| `/spotify` | Lists these commands. |
+| `/sp <song or artist>` | Plays the best match. Word order does not matter. |
+| `/sp --artist <name> <song>` | Only considers tracks by that artist (use quotes for names with spaces). |
+| `/sp spotify:track:<id>` | Plays that exact track; `open.spotify.com/track/...` links work too. |
+| `/sp` | Play/pause. |
+| `/sp play` | Resumes playback. |
+| `/sp pause`, `/sp next`, `/sp prev` | Playback controls; each one reports the resulting state. |
+| `/sp np` | What is playing now. |
+| `/sp setup [id\|secret]` | Pastes a credential from the clipboard. |
+| `/sp check` | Verifies credentials with a search, without playing anything. |
+| `/sp sidebar on\|off` | Shows or hides the now-playing row. The choice is remembered. |
+| `/sp help` | Lists these forms. |
+
+### Controls versus songs
+
+The rule is fixed: when the **whole** argument is exactly one of the forms above (case and extra spaces
+ignored), it is a control. Anything else is a song search. So `/sp next` skips a track and `/sp next episode`
+searches for that song. To search for a song whose name is a control word, prefix it with `play`:
+`/sp play next` always searches for "next".
 
 ### How a song is chosen
 
