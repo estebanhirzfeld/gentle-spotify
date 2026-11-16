@@ -1,17 +1,16 @@
-<p align="center"><img src="assets/logo.png" alt="gentle-spotify logo" width="160"></p>
+<p align="center"><img src="assets/logo.png" alt="gentle-spotify logo" width="140"></p>
 
 # gentle-spotify
 
 ![macOS: supported](https://img.shields.io/badge/macOS-supported-brightgreen) ![Linux: experimental](https://img.shields.io/badge/Linux-experimental-orange)
 
-Control the **Spotify desktop app** on your Mac — or on Linux, experimentally — from
-[Gentle Shell](https://gentlemanprogramming.com/) / Pi with slash commands, and optionally see what is
-playing in the sidebar.
+Control the **Spotify desktop app** from [Gentle Shell](https://gentlemanprogramming.com/) / Pi with slash
+commands, and optionally see what is playing in the sidebar.
 
 ```
-/sp Eminem my name is        ▶ My Name Is — Eminem (The Slim Shady LP, 1999)
-/sp                          ⏸ My Name Is — Eminem
-/sp next                     ▶ Without Me — Eminem
+/sp Eminem my name is     ▶ My Name Is — Eminem (The Slim Shady LP, 1999)
+/sp                       play/pause
+/sp next                  ▶ Without Me — Eminem
 ```
 
 ```
@@ -20,127 +19,87 @@ INTEGRATIONS (2)
 - ♪ Eminem — My Name Is
 ```
 
-- **One command.** Everything lives under `/sp`, so it never collides with other extensions.
-- **Deterministic.** Commands run inside the extension, not through the model: same input, same result, no tokens.
-- **Plays in your real Spotify app.** Your account, your library, your devices. Not a separate player.
-- **Optional sidebar row.** One line under INTEGRATIONS; turn it off with `/sp sidebar off`.
-
-## How it works
-
-Two halves, because the Spotify app can only play a track by its URI:
-
-1. **Search** goes to the Spotify Web API with your developer credentials (client-credentials token, cached),
-   and the extension picks the best match deterministically.
-2. **Playback** goes to the Spotify app on your machine: on **macOS** through AppleScript (`osascript`),
-   on **Linux** through the app's MPRIS D-Bus interface (`dbus-send`): play, pause, next, previous, and
-   reading what is playing.
-
-Spotify brings its window to the front when it starts a track on macOS; the extension hands focus straight
-back to the app you were using (it waits at most one second, and only for that command). On Linux the app
-is never launched: every command first checks that Spotify is running on the session bus, and a playback
-command answers `Spotify is not running: open it first.` when it is not.
-
-Linux support is **experimental**: it has not been verified against a real Spotify on Linux yet. It follows
-the app's standard MPRIS interface, but reports from real setups are very welcome.
-
-## Requirements
-
-- macOS or Linux with the Spotify desktop app installed. On Linux you also need `dbus-send` (from your
-  distribution's `dbus` package) and, for `/sp setup`, a clipboard tool: `wl-clipboard`, `xclip` or `xsel`.
-- A Spotify developer app of your own, used only for search (see [Setup](#setup)). Creating one is free, but
-  Spotify's docs state that "the app owner must have a Spotify Premium account for apps in development mode to
-  function" ([quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes)).
-- Use **your own** credentials. Never share them or ship them in a package: the client secret identifies your
-  developer account, and every request made with it counts against your account's quota.
-- Gentle Shell, or any Pi build with extension support.
+One command, handled by the extension and never by the model: deterministic, no tokens. It drives your real
+Spotify app, not a separate player.
 
 ## Install
 
 ```bash
-pi install git:github.com/<owner>/gentle-spotify
+pi install git:github.com/estebanhirzfeld/gentle-spotify
 ```
 
-Or from a local clone: `pi install ./gentle-spotify`. Then run `/reload` or start a new session.
+From a local clone: `pi install ./gentle-spotify`. Then run `/reload`, or start a new session.
 
-## Setup
+## Setup (2 minutes)
 
-Spotify's AppleScript interface can only play a track by its URI, so finding a song by name goes through
-the Spotify Web API. That needs a developer app, and it takes about two minutes:
+Spotify can only play a track by its URI, so finding a song by name needs a Web API search, and that needs a
+developer app of your own — free to create.
 
-1. Open https://developer.spotify.com/dashboard and choose **Create app**.
-2. Use any name, set the redirect URI to `http://127.0.0.1:8888/callback` (it is not used) and tick **Web API**.
-3. In the app's **Settings**, copy the **Client ID** and run `/sp setup`.
-4. Copy the **Client secret** and run `/sp setup` again.
-5. Run `/sp check`.
+1. Open the [developer dashboard](https://developer.spotify.com/dashboard) → **Create app**. Any name,
+   redirect URI `http://127.0.0.1:8888/callback` (unused), tick **Web API**.
+2. In **Settings**, copy the **Client ID** → run `/sp setup`.
+3. Copy the **Client secret** → run `/sp setup` again → `/sp check`.
 
-`/sp setup` reads the value from the clipboard, never prints it and clears the clipboard afterwards.
-Credentials live in `~/.config/spotify-cli/credentials` with mode `600`; set `SPOTIFY_CLI_DIR` to use
-another folder.
+`/sp setup` takes the value from your clipboard, never prints it, and clears the clipboard afterwards.
+Credentials live in `~/.config/spotify-cli/credentials` (mode `600`); set `SPOTIFY_CLI_DIR` to use another
+folder. Use **your own** credentials — every request counts against the owner account's quota, and the client
+secret must never be shared or shipped.
+
+> Spotify's docs state that "the app owner must have a Spotify Premium account for apps in development mode to
+> function" ([quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes)).
 
 ## Commands
 
-Everything is one command, `/sp`. Type `/sp ` and press Tab to see the fixed forms.
+Type `/sp ` and press Tab to see the fixed forms.
 
 | Command | What it does |
 | --- | --- |
-| `/sp <song or artist>` | Plays the best match. Word order does not matter. |
-| `/sp --artist <name> <song>` | Only considers tracks by that artist (use quotes for names with spaces). |
-| `/sp spotify:track:<id>` | Plays that exact track; `open.spotify.com/track/...` links work too. |
+| `/sp <song or artist>` | Play the best match. Word order does not matter. |
+| `/sp --artist <name> <song>` | Only consider tracks by that artist. |
+| `/sp spotify:track:<id>` | Play that exact track; `open.spotify.com/track/...` links work too. |
 | `/sp` | Play/pause. |
-| `/sp play` | Resumes playback. |
-| `/sp pause`, `/sp next`, `/sp prev` | Playback controls; each one reports the resulting state. |
+| `/sp play` | Resume. |
+| `/sp pause` · `/sp next` · `/sp prev` | Controls; each reports the resulting state. |
 | `/sp np` | What is playing now. |
-| `/sp setup [id\|secret]` | Pastes a credential from the clipboard. |
-| `/sp check` | Verifies credentials with a search, without playing anything. |
-| `/sp sidebar on\|off` | Shows or hides the now-playing row. The choice is remembered. |
-| `/sp help` | Lists these forms. |
+| `/sp setup [id\|secret]` · `/sp check` | Load and verify credentials. |
+| `/sp sidebar on\|off` | Show or hide the now-playing row (remembered). |
 
-### Controls versus songs
+**Controls versus songs.** When the whole argument is exactly one of the forms above (case and extra spaces
+ignored), it is a control; anything else is a song search. So `/sp next` skips a track and `/sp next episode`
+searches for that song. Prefix with `play` to search a word that is also a control: `/sp play next`.
 
-The rule is fixed: when the **whole** argument is exactly one of the forms above (case and extra spaces
-ignored), it is a control. Anything else is a song search. So `/sp next` skips a track and `/sp next episode`
-searches for that song. To search for a song whose name is a control word, prefix it with `play`:
-`/sp play next` always searches for "next".
+**Which match wins.** Most query words in the title or artists, then title words in the query, then the
+shortest title (`My Name Is` beats `My Name Is - Remix`), then Spotify's own order. Accents, case and
+punctuation are ignored, so the same query always picks the same track.
 
-### How a song is chosen
+## Platforms
 
-Spotify returns up to 10 results. The extension picks, in order of priority:
+- **macOS:** supported. Playback goes through the app's AppleScript interface. Starting a track makes Spotify
+  bring its window forward; the extension hands focus straight back to the app you were using (it waits at most
+  one second, and only for that command).
+- **Linux:** experimental, driven by the app's MPRIS D-Bus interface (`dbus-send` from your distribution's
+  `dbus` package; `wl-clipboard`, `xclip` or `xsel` for `/sp setup`). It has **not** been verified against a
+  real Spotify on Linux yet — reports from real setups are welcome. Spotify is never launched: commands answer
+  `Spotify is not running: open it first.` when it is closed.
 
-1. the result whose title and artists contain the most words of your query,
-2. then the one whose title words appear most in your query,
-3. then the shortest title (so `My Name Is` wins over `My Name Is - Remix`),
-4. then Spotify's own order.
-
-Accents, case and punctuation are ignored. The same query against the same results always picks the same track.
-
-## Sidebar row
-
-When enabled (the default), the extension asks Spotify for the current track every 5 seconds and shows
-`♪ title — artist` (or `⏸` when paused) as one row in the INTEGRATIONS section. It never launches Spotify:
-when the app is closed or stopped, the row disappears. Gentle Shell shows the sidebar on terminals at least
-140 columns wide.
-
-Gentle Shell does not offer extensions a sidebar section of their own, so the row lives inside INTEGRATIONS.
+The sidebar row (default on) reads the current track every 5 seconds and shows one line under INTEGRATIONS.
+Gentle Shell offers extensions no sidebar section of their own, so the row lives there; it disappears when
+Spotify is closed or stopped. The sidebar shows at 140+ columns.
 
 ## Privacy
 
-- Your Client ID and secret go only to `accounts.spotify.com` to get a token; searches go to `api.spotify.com`.
-- The token is cached in `~/.config/spotify-cli/token` (mode `600`) until it expires.
-- Nothing is sent anywhere else.
+Your Client ID and secret go only to `accounts.spotify.com` for a token; searches go to `api.spotify.com`. The
+token is cached in `~/.config/spotify-cli/token` (mode `600`) until it expires. Nothing is sent anywhere else.
 
 ## Development
 
 ```bash
-npm test   # node --test test/*.test.ts (Node 22.18+ / 24, no dependencies)
+npm test   # node --test test/*.test.ts — Node 22.18+/24, no dependencies
 ```
 
-Tests use fakes for the network, `osascript`, `dbus-send` and the clipboard, so they never touch your Spotify.
-
-## Listing on Gentle Hub
-
-[Gentle Hub](https://gentlemanprogramming.com/gentle-hub/) lists public GitHub repositories by topic.
-This repository uses `gentle-shell-package` and `gentle-shell-extension`.
+Network, `osascript`, `dbus-send` and the clipboard are faked, so tests never touch your Spotify.
 
 ## License
 
-MIT
+MIT · listed on [Gentle Hub](https://gentlemanprogramming.com/gentle-hub/) via the `gentle-shell-package` and
+`gentle-shell-extension` topics.
