@@ -10,6 +10,7 @@ import {
 	type Runner,
 	type SpotifyDeps,
 } from "../src/spotify.ts";
+import { createMacOSPlayer } from "../src/players/macos.ts";
 
 const SEARCH = {
 	tracks: {
@@ -308,4 +309,23 @@ test("S7: an unsupported platform fails playback clearly and search still works"
 	assert.equal(h.scripts.length, 0, "no osascript calls on an unsupported platform");
 	const msg = await sp.check(); // search never touches the platform player
 	assert.match(msg, /^Credentials OK/);
+});
+
+test("N4 on macOS: a malicious URI is rejected inside the player and no AppleScript runs", async () => {
+	const refusing: Runner = async (cmd, args) => {
+		throw new Error(`must not run: ${cmd} ${args.join(" ")}`);
+	};
+	const player = createMacOSPlayer(refusing);
+	const bad = 'spotify:track:ABC"); do shell script "rm -rf ~';
+	await assert.rejects(player.playUri(bad), /Not a valid spotify:track:<id> URI/, "the injection URI is rejected");
+	for (const uri of ["spotify:track:", "spotify:track:has space", "open.spotify.com/track/XYZ"]) {
+		await assert.rejects(player.playUri(uri), /Not a valid spotify:track:<id> URI/, `rejected: ${uri}`);
+	}
+	// a URI shaped exactly like the search flow produces still reaches osascript
+	const scripts: string[] = [];
+	await createMacOSPlayer(async (_cmd, args) => {
+		scripts.push(args.filter((_, i) => i % 2 === 1).join("\n"));
+		return { code: 0, stdout: "ok\n", stderr: "" };
+	}).playUri("spotify:track:ABC123_def");
+	assert.match(scripts[0], /play track "spotify:track:ABC123_def"/);
 });

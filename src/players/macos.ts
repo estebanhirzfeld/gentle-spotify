@@ -7,6 +7,11 @@
  */
 import { SpotifyError, type NowPlaying, type Player, type Runner } from "../spotify.ts";
 
+/** Constant on purpose: an invalid URI is never echoed back. */
+const NOT_A_TRACK_URI = "Not a valid spotify:track:<id> URI.";
+/** Every URI reaching `play track` looks like spotify:track:<id> (parseTrackRef / the search filter). */
+const TRACK_URI = /^spotify:track:[A-Za-z0-9_]+$/;
+
 function guarded(lines: string[]): string[] {
 	return [
 		'if application "Spotify" is running then',
@@ -72,6 +77,8 @@ export function createMacOSPlayer(run: Runner): Player {
 			await osa(['tell application "Spotify" to play']);
 		},
 		async playUri(uri: string) {
+			// validated here too: a hostile URI is rejected before any script line is built
+			if (!TRACK_URI.test(uri)) throw new SpotifyError(NOT_A_TRACK_URI);
 			await osa(keepFocus([`tell application "Spotify" to play track "${uri}"`]));
 		},
 		async toggle() {

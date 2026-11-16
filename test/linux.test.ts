@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createLinuxPlayer } from "../src/players/linux.ts";
 import { createSpotify, type NowPlaying, type Runner, type SpotifyDeps } from "../src/spotify.ts";
 
 // ---------------------------------------------------------------- fixtures
@@ -47,6 +48,32 @@ const METADATA = `method return time=1700000000.200 sender=:1.42 -> dest=:1.9 se
       )
    }`;
 
+// A reply built to defeat naive regex parsing: keywords and brackets inside quoted
+// strings, a `]` inside an artist name, commas after strings.
+const HOSTILE = `method return time=1700000000.300 sender=:1.42 -> dest=:1.9 serial=14 reply_serial=13
+   variant       struct {
+      dict entry(
+         string "xesam:title"
+         variant string "Foo array [live] and dict entry(string \\"x\\")"
+      )
+      dict entry(
+         string "xesam:artist"
+         variant array [
+            string "A]",
+            string "B array [y], C \\"quote\\"",
+            string "Dido"
+         ]
+      )
+      dict entry(
+         string "mpris:trackid"
+         variant string "/com/spotify/track/ABC123"
+      )
+      dict entry(
+         string "xesam:album"
+         variant string "Collaborations"
+      )
+   }`;
+
 const OWNER_ARGS = [
 	"--session",
 	"--print-reply",
@@ -73,7 +100,7 @@ interface Call {
 }
 
 function linuxHarness(
-	opts: { owner?: boolean; status?: string; metadata?: string; fail?: { code: number; stderr?: string } } = {},
+	opts: { owner?: boolean; status?: string; metadata?: string; fail?: { code: number; stderr?: string; rejectWith?: string } } = {},
 ) {
 	const dir = mkdtempSync(join(tmpdir(), "gentle-spotify-linux-"));
 	writeFileSync(join(dir, "credentials"), "SPOTIFY_CLIENT_ID=id1234567890\nSPOTIFY_CLIENT_SECRET=secret1234567890\n");
@@ -82,7 +109,10 @@ function linuxHarness(
 
 	const run: Runner = async (cmd, args) => {
 		calls.push({ cmd, args: [...args] });
-		if (opts.fail) return { code: opts.fail.code, stdout: "", stderr: opts.fail.stderr ?? "" };
+		if (opts.fail) {
+			if (opts.fail.rejectWith !== undefined) throw new Error(opts.fail.rejectWith);
+			return { code: opts.fail.code, stdout: "", stderr: opts.fail.stderr ?? "" };
+		}
 		const a = args.join(" ");
 		if (a.includes("NameHasOwner")) {
 			return { code: 0, stdout: `method return time=1 sender=:1.1 -> dest=:1.2 serial=2 reply_serial=1\n   boolean ${opts.owner === false ? "false" : "true"}\n`, stderr: "" };
@@ -188,6 +218,13 @@ test("S7: state parsing covers Playing/Paused/Stopped, several artists and escap
 	const sp = createSpotify(h.deps);
 	assert.deepEqual(await sp.nowPlaying(), { state: "playing", name: 'My "Best" Song', artist: "Eminem, Dido" });
 
+	const hostile = linuxHarness({ metadata: HOSTILE });
+	assert.deepEqual(await createSpotify(hostile.deps).nowPlaying(), {
+		state: "playing",
+		name: `Foo array [live] and dict entry(string "x")`,
+		artist: `A], B array [y], C "quote", Dido`,
+	});
+
 	const paused = linuxHarness({ status: STATUS("Paused") });
 	assert.deepEqual(await createSpotify(paused.deps).nowPlaying(), {
 		state: "paused",
@@ -203,18 +240,69 @@ test("S7: state parsing covers Playing/Paused/Stopped, several artists and escap
 	);
 });
 
+const NOT_A_TRACK_URI = /Not a valid spotify:track:<id> URI/;
+
+// A runner that refuses to run anything: validation must happen before a single
+// dbus-send call is made on a rejected URI.
+const refusingRunner: Runner = async () => {
+	throw new Error("must not be called: a rejected URI must send nothing");
+};
+
+const BAD_URIS = [
+	`spotify:track:x"); do shell script "evil`,
+	"spotify:track:bad id",
+	"spotify:track:",
+	"spotify:track:x-y",
+	"not a uri",
+];
+
+test("N4: playUri validates the URI inside the player and sends nothing on a bad one", async () => {
+	const player = createLinuxPlayer(refusingRunner);
+	for (const uri of BAD_URIS) {
+		await assert.rejects(player.playUri(uri), NOT_A_TRACK_URI, `expected rejection for ${JSON.stringify(uri)}`);
+	}
+	// what the search flow produces still goes through: alphanumerics and underscore
+	const sent: string[] = [];
+	await createLinuxPlayer(async (_cmd, args) => {
+		sent.push(args.join(" "));
+		return { code: 0, stdout: args.some((a) => a.includes("NameHasOwner")) ? "   boolean true\n" : "method return time=1 sender=:1.1 -> dest=:1.2 serial=2 reply_serial=1\n", stderr: "" };
+	}).playUri("spotify:track:ABC123_def");
+	assert.ok(sent.some((line) => line.includes("OpenUri")), "a valid URI reaches OpenUri");
+});
+
 test("S7: a missing dbus-send reports the install hint", async () => {
 	const exit127 = linuxHarness({ fail: { code: 127 } });
 	await assert.rejects(createSpotify(exit127.deps).toggle(), NOT_FOUND);
-
-	const spawnError = linuxHarness({ fail: { code: 1, stderr: "spawn dbus-send ENOENT" } });
-	await assert.rejects(createSpotify(spawnError.deps).pause(), NOT_FOUND);
 });
 
 test("S7: other dbus failures surface the stderr", async () => {
 	const h = linuxHarness({ fail: { code: 1, stderr: "Rejected send message, 1 matched rules\n" } });
 	await assert.rejects(createSpotify(h.deps).toggle(), /dbus-send failed: Rejected send message, 1 matched rules/);
 });
+
+test("N5: not found comes only from exit code 127 or an ENOENT spawn rejection, never from stderr text", async () => {
+	const rejectedSpawn = linuxHarness({ fail: { code: 0, rejectWith: "spawn dbus-send ENOENT" } });
+	await assert.rejects(createSpotify(rejectedSpawn.deps).pause(), NOT_FOUND, "a spawn rejection is a missing tool");
+
+	// a real dbus error whose stderr merely mentions "spawn" is dbus-send failing, not missing
+	const stderrSpawn = linuxHarness({ fail: { code: 1, stderr: "cannot spawn a message to the bus: name has no owner" } });
+	await assert.rejects(createSpotify(stderrSpawn.deps).toggle(), /dbus-send failed: cannot spawn a message to the bus/);
+
+	// a rejection that is not a spawn error is surfaced as-is, not misreported as "not found"
+	const otherRejection = await otherHarnessOutcome(linuxHarness({ fail: { code: 0, rejectWith: "EACCES: spawn permissions denied" } }));
+	assert.match(otherRejection, /EACCES/, "the runner's own error is surfaced");
+	assert.doesNotMatch(otherRejection, /not found/, "the missing-tool hint is not shown");
+});
+
+/** Runs toggle() and returns the rejection text (or "no rejection"). */
+async function otherHarnessOutcome(h: ReturnType<typeof linuxHarness>): Promise<string> {
+	try {
+		await createSpotify(h.deps).toggle();
+		return "no rejection";
+	} catch (err) {
+		return String(err);
+	}
+}
 
 test("S7: /sp check on Linux needs no dbus-send at all", async () => {
 	const h = linuxHarness({ fail: { code: 127 } });

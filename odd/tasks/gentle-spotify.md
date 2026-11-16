@@ -90,3 +90,14 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
 - L11 (user, verbatim): "te dejo un logo en ~/Desktop/gentleman+spotify.png"; told that Spotify's design guidelines
   forbid logos with Spotify brand elements, co-branding, and "Spotify" in an app name, the user answered "dejalo como
   esta" (name) and "dejalo asi" (logo): name kept, logo shipped unchanged. User's decision, risk disclosed.
+- L12 (evidence): independent verify of T5 (commits 8bebddf..4f89839) — no blocking findings; S1-S6 regression held.
+  Non-blocking fixed test-first (RED observed, then GREEN): N1 metadata parsing — a tokenizer for dbus-send replies
+  (quoted strings with escapes are single tokens, so `array [`/`dict entry(`/brackets inside titles or artists are
+  never mistaken for structure; `]` inside an artist no longer truncates); N2 clipboard — a rejected exec is a
+  failed tool, falling through only for a missing tool (ENOENT rejection or exit code 127); a tool that exists but
+  fails (e.g. empty Wayland clipboard) stops the chain with its own error, same rule for clear (reports false),
+  value never in messages; N4 — playUri rejects `^spotify:track:[A-Za-z0-9_]+$` non-matches inside both players
+  with a message that never echoes the input; N5 — "not found" decided only from exit 127 or an ENOENT rejection,
+  never from stderr text (the stderr-regex expectation in the old missing-tool test pinned the bug and was
+  corrected, not weakened). Left out of scope: N3 (xclip clear on real X11 — only observable on a real X11
+  session), N6 (parseTrackRef accepts `_` — out of scope; both players re-validate now). 94 tests.
