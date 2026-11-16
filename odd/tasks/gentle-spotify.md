@@ -34,7 +34,7 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
 
 - [x] T1 S5 — scaffold: package.json manifest, LICENSE, .gitignore, this document. inline. Commit eb3c4ab.
 - [x] T2 S2,S4,S6 — engine `src/spotify.ts`: credentials, token cache, search, ranking, AppleScript, state. inline, test-first. 27 tests; live state + ranking checked. Commit: see git log (feat: add Spotify engine).
-- [ ] T3 S1,S2,S3,S6 — extension `src/extension.ts`: commands, sidebar row, toggle persistence. inline, test-first.
+- [x] T3 S1,S2,S3,S6 — extension `src/extension.ts`: commands, sidebar row, toggle persistence. inline (worker unavailable: session cwd ~/Desktop is not a git repo), test-first. 21 tests (48 total); loads under Gentle Shell's jiti 2.7.0. Commit: feat: add slash commands and sidebar row.
 - [ ] T4 S5 — README (install, commands, Gentle Hub topics), local install in Gentle Shell, live check. inline.
 
 ## Log
