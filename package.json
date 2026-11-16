@@ -1,17 +1,19 @@
 {
   "name": "gentle-spotify",
   "version": "0.1.0",
-  "description": "Control the macOS Spotify app from Gentle Shell / Pi with deterministic slash commands and an optional now-playing row in the sidebar.",
+  "description": "Control the Spotify desktop app on macOS (Linux experimental) from Gentle Shell / Pi with deterministic slash commands and an optional now-playing row in the sidebar.",
   "type": "module",
   "license": "MIT",
   "keywords": [
     "pi-package",
     "gentle-shell",
     "spotify",
-    "music"
+    "music",
+    "linux"
   ],
   "os": [
-    "darwin"
+    "darwin",
+    "linux"
   ],
   "files": [
     "src",

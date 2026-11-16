@@ -18,6 +18,7 @@ import {
 	type NowPlaying,
 	type Spotify,
 } from "./spotify.ts";
+import { clearClipboard, readClipboard } from "./clipboard.ts";
 
 const STATUS_KEY = "spotify";
 const POLL_MS = 5000;
@@ -41,6 +42,10 @@ interface Reply {
 export interface ExtensionOptions {
 	configDir?: string;
 	spotify?: Engine;
+	/** Defaults to process.platform; picks the clipboard commands for /sp setup. */
+	platform?: string;
+	/** Defaults to process.env; only WAYLAND_DISPLAY is read (Linux clipboard). */
+	env?: Record<string, string | undefined>;
 	setInterval?: (fn: () => void, ms: number) => Timer;
 	clearInterval?: (timer: Timer) => void;
 }
@@ -176,12 +181,16 @@ export function createExtension(options: ExtensionOptions = {}) {
 		}
 
 		async function setup(field: CredentialField | undefined): Promise<Reply> {
-			const clip = await exec("pbpaste", [], 5_000);
-			if (clip.code !== 0) throw new Error(`Could not read the clipboard: ${clip.stderr.trim()}`);
-			const written = saveCredential(configDir, clip.stdout, field); // validates before writing
-			const cleared = (await exec("osascript", ["-e", 'set the clipboard to ""'], 5_000)).code === 0;
+			const clipDeps = {
+				exec: (c: string, a: string[]) => exec(c, a, 5_000),
+				platform: options.platform ?? process.platform,
+				env: options.env ?? process.env,
+			};
+			const clip = await readClipboard(clipDeps); // platform-specific commands, no shell
+			const written = saveCredential(configDir, clip.text, field); // validates before writing
+			const cleared = await clearClipboard(clipDeps, clip.tool); // same tool that read it
 
-			const length = clip.stdout.trim().length;
+			const length = clip.text.trim().length;
 			const label = written === "clientId" ? "Client ID" : "Client secret";
 			const nextStep =
 				written === "clientId"

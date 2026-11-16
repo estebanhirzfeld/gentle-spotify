@@ -8,7 +8,10 @@ import { SpotifyError, type NowPlaying } from "../src/spotify.ts";
 
 type Level = "info" | "warning" | "error" | undefined;
 
-function setup(opts: { clipboard?: string; sidebar?: boolean; clearFails?: boolean } = {}) {
+function setup(
+	opts: { clipboard?: string; sidebar?: boolean; clearFails?: boolean; wlFails?: boolean } = {},
+	platformOpts: { platform?: string; env?: Record<string, string | undefined> } = {},
+) {
 	const dir = mkdtempSync(join(tmpdir(), "gentle-spotify-ext-"));
 	if (opts.sidebar === false) writeFileSync(join(dir, "gentle-spotify.json"), '{"sidebar":false}\n');
 
@@ -22,10 +25,19 @@ function setup(opts: { clipboard?: string; sidebar?: boolean; clearFails?: boole
 			handlers.set(event, [...(handlers.get(event) ?? []), h]),
 		exec: async (cmd: string, args: string[]) => {
 			execs.push([cmd, args]);
-			if (cmd === "pbpaste") return { stdout: clipboard, stderr: "", code: 0, killed: false };
-			if (cmd === "osascript" && args.join(" ").includes("set the clipboard")) {
+			const clears =
+				(cmd === "osascript" && args.join(" ").includes("set the clipboard")) ||
+				cmd === "wl-copy" ||
+				(cmd === "xclip" && args.includes("-i")) ||
+				(cmd === "xsel" && args.includes("--clear"));
+			if (clears) {
 				if (opts.clearFails) return { stdout: "", stderr: "not allowed", code: 1, killed: false };
 				clipboard = "";
+				return { stdout: "", stderr: "", code: 0, killed: false };
+			}
+			if (["pbpaste", "wl-paste", "xclip", "xsel"].includes(cmd)) {
+				if (cmd === "wl-paste" && opts.wlFails) return { stdout: "", stderr: "no wl-paste", code: 127, killed: false };
+				return { stdout: clipboard, stderr: "", code: 0, killed: false };
 			}
 			return { stdout: "", stderr: "", code: 0, killed: false };
 		},
@@ -67,6 +79,8 @@ function setup(opts: { clipboard?: string; sidebar?: boolean; clearFails?: boole
 	const ext = createExtension({
 		configDir: dir,
 		spotify: engine,
+		platform: platformOpts.platform,
+		env: platformOpts.env,
 		setInterval: (fn: () => void) => {
 			const t = { fn, cleared: false, unrefed: false, unref() { this.unrefed = true; } };
 			timers.push(t);
@@ -354,6 +368,58 @@ test("N4: the settings file is private (600)", async () => {
 	const h = setup();
 	await h.run("sp", "sidebar off");
 	assert.equal(statSync(join(h.dir, "gentle-spotify.json")).mode & 0o777, 0o600);
+});
+
+test("S7: /sp setup on linux reads with wl-paste and clears with wl-copy", async () => {
+	const id = "CLIENTID1234567890ab";
+	const h = setup({ clipboard: id }, { platform: "linux", env: { WAYLAND_DISPLAY: "wayland-0" } });
+	await h.run("sp", "setup");
+	assert.match(readFileSync(join(h.dir, "credentials"), "utf8"), new RegExp(`^SPOTIFY_CLIENT_ID=${id}$`, "m"));
+	assert.deepEqual(h.execs[0], ["wl-paste", ["--no-newline"]]);
+	assert.equal(h.clipboard, "", "cleared with wl-copy");
+	assert.deepEqual(h.execs[1], ["wl-copy", ["--clear"]]);
+	const [message, level] = h.notes.at(-1)!;
+	assert.equal(level, "info");
+	assert.ok(!message.includes(id), "value never shown");
+	assert.match(message, /20 characters/);
+	assert.match(message, /Client secret/);
+});
+
+test("S7: /sp setup on linux falls back to xclip when wl-paste fails, clearing with xclip", async () => {
+	const id = "CLIENTID1234567890ab";
+	const h = setup(
+		{ clipboard: id, wlFails: true },
+		{ platform: "linux", env: { WAYLAND_DISPLAY: "wayland-0" } },
+	);
+	await h.run("sp", "setup");
+	assert.deepEqual(h.execs[0], ["wl-paste", ["--no-newline"]]);
+	assert.deepEqual(h.execs[1], ["xclip", ["-selection", "clipboard", "-o"]]);
+	assert.match(readFileSync(join(h.dir, "credentials"), "utf8"), new RegExp(`^SPOTIFY_CLIENT_ID=${id}$`, "m"));
+	assert.equal(h.clipboard, "");
+	assert.deepEqual(h.execs[2], ["xclip", ["-selection", "clipboard", "-i", "/dev/null"]]);
+	assert.equal(h.notes.at(-1)![1], "info");
+});
+
+test("S7: a rejected value on linux leaves the clipboard and file untouched", async () => {
+	const h = setup({ clipboard: "short" }, { platform: "linux", env: { WAYLAND_DISPLAY: "wayland-0" } });
+	await h.run("sp", "setup");
+	assert.equal(h.notes.at(-1)![1], "error");
+	assert.match(h.notes.at(-1)![0], /does not look like/);
+	assert.ok(!h.execs.some(([c]) => c === "wl-copy" || c === "xclip" || c === "xsel"), "nothing was cleared");
+	assert.equal(existsSync(join(h.dir, "credentials")), false);
+	assert.equal(h.clipboard, "short", "clipboard untouched");
+});
+
+test("S7: a failed clear on linux warns instead of claiming success", async () => {
+	const h = setup(
+		{ clipboard: "CLIENTID1234567890ab", clearFails: true },
+		{ platform: "linux", env: { WAYLAND_DISPLAY: "wayland-0" } },
+	);
+	await h.run("sp", "setup");
+	const [message, level] = h.notes.at(-1)!;
+	assert.equal(level, "warning");
+	assert.match(message, /could not clear the clipboard/i);
+	assert.ok(!message.includes("CLIENTID1234567890ab"));
 });
 
 test("S1: parseSp maps the whole argument deterministically", () => {

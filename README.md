@@ -1,7 +1,10 @@
 # gentle-spotify
 
-Control the **Spotify app on your Mac** from [Gentle Shell](https://gentlemanprogramming.com/) / Pi with slash
-commands, and optionally see what is playing in the sidebar.
+![macOS: supported](https://img.shields.io/badge/macOS-supported-brightgreen) ![Linux: experimental](https://img.shields.io/badge/Linux-experimental-orange)
+
+Control the **Spotify desktop app** on your Mac — or on Linux, experimentally — from
+[Gentle Shell](https://gentlemanprogramming.com/) / Pi with slash commands, and optionally see what is
+playing in the sidebar.
 
 ```
 /sp Eminem my name is        ▶ My Name Is — Eminem (The Slim Shady LP, 1999)
@@ -26,16 +29,22 @@ Two halves, because the Spotify app can only play a track by its URI:
 
 1. **Search** goes to the Spotify Web API with your developer credentials (client-credentials token, cached),
    and the extension picks the best match deterministically.
-2. **Playback** goes to the Spotify app on your Mac through AppleScript (`osascript`): play, pause, next,
-   previous, and reading what is playing.
+2. **Playback** goes to the Spotify app on your machine: on **macOS** through AppleScript (`osascript`),
+   on **Linux** through the app's MPRIS D-Bus interface (`dbus-send`): play, pause, next, previous, and
+   reading what is playing.
 
-That second half is why it is **macOS only**: AppleScript is how macOS apps are controlled. Spotify brings
-its window to the front when it starts a track; the extension hands focus straight back to the app you were
-using (it waits at most one second, and only for that command).
+Spotify brings its window to the front when it starts a track on macOS; the extension hands focus straight
+back to the app you were using (it waits at most one second, and only for that command). On Linux the app
+is never launched: every command first checks that Spotify is running on the session bus, and a playback
+command answers `Spotify is not running: open it first.` when it is not.
+
+Linux support is **experimental**: it has not been verified against a real Spotify on Linux yet. It follows
+the app's standard MPRIS interface, but reports from real setups are very welcome.
 
 ## Requirements
 
-- macOS with the Spotify desktop app installed.
+- macOS or Linux with the Spotify desktop app installed. On Linux you also need `dbus-send` (from your
+  distribution's `dbus` package) and, for `/sp setup`, a clipboard tool: `wl-clipboard`, `xclip` or `xsel`.
 - A Spotify developer app of your own, used only for search (see [Setup](#setup)). Creating one is free, but
   Spotify's docs state that "the app owner must have a Spotify Premium account for apps in development mode to
   function" ([quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes)).
@@ -123,7 +132,7 @@ Gentle Shell does not offer extensions a sidebar section of their own, so the ro
 npm test   # node --test test/*.test.ts (Node 22.18+ / 24, no dependencies)
 ```
 
-Tests use fakes for the network, `osascript` and the clipboard, so they never touch your Spotify.
+Tests use fakes for the network, `osascript`, `dbus-send` and the clipboard, so they never touch your Spotify.
 
 ## Listing on Gentle Hub
 
