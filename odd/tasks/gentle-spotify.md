@@ -34,12 +34,21 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
   it, never prints the value; `/sp check` validates credentials without playing. Reads the same
   `~/.config/spotify-cli/credentials` file the user already has.
 
+- **S7 Linux, experimental.** User: "podemos agregar soporte a linux?" then "si es rapido como experiemtnal, sino
+  solo mac, metemos un logo o algo asi?". Linux uses the Spotify desktop app's MPRIS D-Bus interface through
+  `dbus-send` (OpenUri, PlayPause, Play, Pause, Next, Previous, PlaybackStatus, Metadata); the clipboard uses
+  wl-paste/wl-copy, xclip or xsel. Platform chosen from `process.platform`; any other platform fails with a clear
+  message. Never launches Spotify. Marked experimental (not verified against a real Linux Spotify). README shows
+  platform badges: macOS supported, Linux experimental. macOS behavior is unchanged.
+
 ## Tasks
 
 - [x] T1 S5 — scaffold: package.json manifest, LICENSE, .gitignore, this document. inline. Commit eb3c4ab.
 - [x] T2 S2,S4,S6 — engine `src/spotify.ts`: credentials, token cache, search, ranking, AppleScript, state. inline, test-first. 27 tests; live state + ranking checked. Commit: see git log (feat: add Spotify engine).
 - [x] T3 S1,S2,S3,S6 — L8 done: single `/sp` command with `parseSp` (fixed forms, else search) and engine `toggle()`; 58 tests; loads under jiti. Commit: refactor: unify commands into /sp. Previously: — extension `src/extension.ts`: commands, sidebar row, toggle persistence. inline (worker unavailable: session cwd ~/Desktop is not a git repo), test-first. 21 tests (48 total); loads under Gentle Shell's jiti 2.7.0. Commit: feat: add slash commands and sidebar row.
 - [x] T4 S5 — L8 done: README documents /sp, its fixed forms and the controls-versus-songs rule. Commit: docs: document /sp. Previously: — README (install, commands, Gentle Hub topics), local install in Gentle Shell, live check. inline. Commit: docs: add README. Installed as local package in ~/.gentle-shell/agent/settings.json (backup *.bak-20261116-182238-pre-gentle-spotify); `gentle-shell list` shows it; every AppleScript compiles with osacompile; live nowPlaying + search ranking checked. Not run live: pause/next/prev/play (would change the user's playback).
+
+- [ ] T5 S7 — Linux backend + platform split + clipboard + README badges. subagent (repository_root consent L10), test-first.
 
 ## Log
 
@@ -73,3 +82,7 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
   only; restoring focus was verified live with no permission prompt. README: Premium note (Spotify quota-modes doc),
   own-credentials warning, "How it works" (macOS only). A probe of two quick playpauses left Spotify paused; it was
   resumed immediately and no further playback probes were run.
+- L10 (user, verbatim): "podemos agregar soporte a linux?" — then "si es rapido como experiemtnal, sino solo mac,
+  metemos un logo o algo asi?" and "Sí, usá un subagente" (consent to a subagent working in ~/Desktop/gentle-spotify).
+  Interpretation: experimental Linux support plus README platform badges; a package logo/gallery image is offered
+  separately, not built.
