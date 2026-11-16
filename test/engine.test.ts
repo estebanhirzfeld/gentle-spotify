@@ -329,3 +329,10 @@ test("N4 on macOS: a malicious URI is rejected inside the player and no AppleScr
 	}).playUri("spotify:track:ABC123_def");
 	assert.match(scripts[0], /play track "spotify:track:ABC123_def"/);
 });
+
+test("--artist without a song fails clearly and never resumes", async () => {
+	const h = harness();
+	await assert.rejects(createSpotify(h.deps).play("", { artist: "Eminem" }), /Add a song after --artist: \/sp --artist Eminem <song>/);
+	assert.equal(h.scripts.length, 0, "nothing sent to Spotify");
+	assert.equal(h.fetches.length, 0, "no search");
+});

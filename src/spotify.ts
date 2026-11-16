@@ -358,6 +358,9 @@ export function createSpotify(deps: SpotifyDeps) {
 		/** Resumes when the query is empty; plays a URI/link directly; otherwise searches. */
 		async play(query: string, options: { artist?: string } = {}): Promise<string> {
 			const text = query.trim();
+			if (!text && options.artist) {
+				throw new SpotifyError(`Add a song after --artist: /sp --artist ${options.artist} <song>.`);
+			}
 			if (!text) {
 				await player.resume();
 				return settleReport();

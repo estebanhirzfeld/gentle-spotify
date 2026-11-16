@@ -438,3 +438,10 @@ test("S1: parseSp maps the whole argument deterministically", () => {
 	assert.deepEqual(parseSp("--artist Eminem my name is"), { kind: "search", query: "my name is", artist: "Eminem" });
 	assert.deepEqual(parseSp("play --artist Eminem stan"), { kind: "search", query: "stan", artist: "Eminem" });
 });
+
+test("/sp --artist <name> with no song reports an error instead of resuming", async () => {
+	const h = setup();
+	h.fail(undefined);
+	await h.run("sp", "--artist Eminem");
+	assert.deepEqual(h.calls.filter((c) => c.startsWith("play:")), ["play:|Eminem"], "artist reaches the engine");
+});
