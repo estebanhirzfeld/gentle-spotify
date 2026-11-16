@@ -32,8 +32,8 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
 
 ## Tasks
 
-- [ ] T1 S5 — scaffold: package.json manifest, LICENSE, .gitignore, this document. inline.
-- [ ] T2 S2,S4,S6 — engine `src/spotify.ts`: credentials, token cache, search, ranking, AppleScript, state. inline, test-first.
+- [x] T1 S5 — scaffold: package.json manifest, LICENSE, .gitignore, this document. inline. Commit eb3c4ab.
+- [x] T2 S2,S4,S6 — engine `src/spotify.ts`: credentials, token cache, search, ranking, AppleScript, state. inline, test-first. 27 tests; live state + ranking checked. Commit: see git log (feat: add Spotify engine).
 - [ ] T3 S1,S2,S3,S6 — extension `src/extension.ts`: commands, sidebar row, toggle persistence. inline, test-first.
 - [ ] T4 S5 — README (install, commands, Gentle Hub topics), local install in Gentle Shell, live check. inline.
 
@@ -51,3 +51,7 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
   "Fila dentro de INTEGRATIONS" and the location `~/Desktop/gentle-spotify`.
 - L4 (evidence): Gentle Hub lists public GitHub repos with topic `gentle-shell-package`; optional subtype
   `gentle-shell-extension` (gentlemanprogramming.com/gentle-hub). Install: `pi install git:github.com/<owner>/<repo>`.
+- L5 (evidence): the `Without Me` result was not a ranking problem. Spotify returns My Name Is first for
+  "My name is Eminem"; the bash `play` script overwrote `query` with each unquoted word, so it searched
+  only "Eminem". Fixed in `~/.local/bin/play` (outside this repo) with a RED-then-GREEN selftest. The
+  extension receives one argument string, so it is not affected; `pickTrack` still re-ranks deterministically.
