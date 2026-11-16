@@ -6,7 +6,7 @@
  * Gentle Shell renders inside the INTEGRATIONS section of the sidebar.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -33,6 +33,10 @@ interface Ctx {
 }
 type Engine = Pick<Spotify, "play" | "pause" | "next" | "prev" | "nowPlaying" | "check">;
 type Timer = { unref?: () => void } | number | undefined;
+interface Reply {
+	message: string;
+	level: Level;
+}
 
 export interface ExtensionOptions {
 	configDir?: string;
@@ -73,7 +77,9 @@ function readSidebarSetting(dir: string): boolean {
 
 function writeSidebarSetting(dir: string, on: boolean): void {
 	if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-	writeFileSync(join(dir, SETTINGS_FILE), `${JSON.stringify({ sidebar: on })}\n`);
+	const file = join(dir, SETTINGS_FILE);
+	writeFileSync(file, `${JSON.stringify({ sidebar: on })}\n`, { mode: 0o600 });
+	chmodSync(file, 0o600);
 }
 
 function message(error: unknown): string {
@@ -121,11 +127,13 @@ export function createExtension(options: ExtensionOptions = {}) {
 		}
 
 		/** Wraps a command: reports its result or error, then refreshes the row. */
-		function command(run: (args: string, ctx: Ctx) => Promise<string>) {
+		function command(run: (args: string, ctx: Ctx) => Promise<string | Reply>) {
 			return async (args: string, ctx: Ctx): Promise<void> => {
 				ui = ctx.ui;
 				try {
-					ctx.ui.notify(await run(args ?? "", ctx), "info");
+					const reply = await run(args ?? "", ctx);
+					if (typeof reply === "string") ctx.ui.notify(reply, "info");
+					else ctx.ui.notify(reply.message, reply.level);
 				} catch (error) {
 					ctx.ui.notify(message(error), "error");
 				}
@@ -133,7 +141,7 @@ export function createExtension(options: ExtensionOptions = {}) {
 			};
 		}
 
-		async function setup(arg: string): Promise<string> {
+		async function setup(arg: string): Promise<Reply> {
 			let field: CredentialField | undefined;
 			if (arg === "id") field = "clientId";
 			else if (arg === "secret") field = "clientSecret";
@@ -142,12 +150,20 @@ export function createExtension(options: ExtensionOptions = {}) {
 			const clip = await exec("pbpaste", [], 5_000);
 			if (clip.code !== 0) throw new Error(`Could not read the clipboard: ${clip.stderr.trim()}`);
 			const written = saveCredential(configDir, clip.stdout, field); // validates before writing
-			await exec("osascript", ["-e", 'set the clipboard to ""'], 5_000);
+			const cleared = (await exec("osascript", ["-e", 'set the clipboard to ""'], 5_000)).code === 0;
 
 			const length = clip.stdout.trim().length;
-			return written === "clientId"
-				? `Saved the Client ID (${length} characters) and cleared the clipboard. Now copy the Client secret and run /spotify setup again.`
-				: `Saved the Client secret (${length} characters) and cleared the clipboard. Run /spotify check to verify.`;
+			const label = written === "clientId" ? "Client ID" : "Client secret";
+			const nextStep =
+				written === "clientId"
+					? "Now copy the Client secret and run /spotify setup again."
+					: "Run /spotify check to verify.";
+			return cleared
+				? { message: `Saved the ${label} (${length} characters) and cleared the clipboard. ${nextStep}`, level: "info" }
+				: {
+						message: `Saved the ${label} (${length} characters), but could not clear the clipboard: clear it yourself. ${nextStep}`,
+						level: "warning",
+					};
 		}
 
 		async function sidebar(arg: string): Promise<string> {

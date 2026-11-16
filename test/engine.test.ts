@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -231,4 +231,23 @@ test("S6: saveCredential rejects values that are not credentials and writes noth
 	assert.throws(() => saveCredential(dir, "has space 1234567890"), /does not look like/);
 	assert.throws(() => saveCredential(dir, "x".repeat(300)), /does not look like/);
 	assert.deepEqual(credentialStatus(dir), { clientId: 0, clientSecret: 0 });
+});
+
+test("item 2: an existing open config dir is tightened to 700 and a stale temp file never leaks", () => {
+	const dir = join(mkdtempSync(join(tmpdir(), "gentle-spotify-")), "cfg");
+	mkdirSync(dir, { mode: 0o755 });
+	chmodSync(dir, 0o755);
+	writeFileSync(join(dir, "credentials.tmp"), "stale\n", { mode: 0o644 });
+	chmodSync(join(dir, "credentials.tmp"), 0o644);
+	saveCredential(dir, "abcdefghij1234567890");
+	assert.equal(statSync(dir).mode & 0o777, 0o700);
+	assert.equal(statSync(join(dir, "credentials")).mode & 0o777, 0o600);
+	assert.equal(existsSync(join(dir, "credentials.tmp")), false);
+});
+
+test("item 2: the token cache also tightens an existing open config dir", async () => {
+	const h = harness();
+	chmodSync(h.dir, 0o755);
+	await createSpotify(h.deps).check();
+	assert.equal(statSync(h.dir).mode & 0o777, 0o700);
 });

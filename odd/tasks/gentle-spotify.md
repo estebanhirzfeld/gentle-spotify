@@ -56,3 +56,6 @@ Replaces the clunky `!play` bash flow; publishable to Gentle Hub as a public Git
   only "Eminem". Fixed in `~/.local/bin/play` (outside this repo) with a RED-then-GREEN selftest. The
   extension receives one argument string, so it is not affected; `pickTrack` still re-ranks deterministically.
 - L6 (evidence): the remote GitHub repo, push and topics were not created; publishing stays the user's decision (S5).
+- L7 (evidence): independent verify (Risk: item 2) — S1-S6 met, no blocking findings. Non-blocking N1-N4 fixed
+  test-first: config dir tightened to 700 even when it existed, stale credentials.tmp removed and written with `wx`,
+  setup warns instead of claiming the clipboard was cleared when clearing fails, settings file 600. 54 tests.

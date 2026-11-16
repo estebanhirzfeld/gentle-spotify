@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createExtension } from "../src/extension.ts";
@@ -8,7 +8,7 @@ import { SpotifyError, type NowPlaying } from "../src/spotify.ts";
 
 type Level = "info" | "warning" | "error" | undefined;
 
-function setup(opts: { clipboard?: string; sidebar?: boolean } = {}) {
+function setup(opts: { clipboard?: string; sidebar?: boolean; clearFails?: boolean } = {}) {
 	const dir = mkdtempSync(join(tmpdir(), "gentle-spotify-ext-"));
 	if (opts.sidebar === false) writeFileSync(join(dir, "gentle-spotify.json"), '{"sidebar":false}\n');
 
@@ -23,7 +23,10 @@ function setup(opts: { clipboard?: string; sidebar?: boolean } = {}) {
 		exec: async (cmd: string, args: string[]) => {
 			execs.push([cmd, args]);
 			if (cmd === "pbpaste") return { stdout: clipboard, stderr: "", code: 0, killed: false };
-			if (cmd === "osascript" && args.join(" ").includes("set the clipboard")) clipboard = "";
+			if (cmd === "osascript" && args.join(" ").includes("set the clipboard")) {
+				if (opts.clearFails) return { stdout: "", stderr: "not allowed", code: 1, killed: false };
+				clipboard = "";
+			}
 			return { stdout: "", stderr: "", code: 0, killed: false };
 		},
 	};
@@ -309,4 +312,31 @@ test("S3: session_shutdown stops the timer and clears the row", async () => {
 	await h.emit("session_shutdown");
 	assert.ok(h.timers[0].cleared);
 	assert.equal(h.lastStatus(), undefined);
+});
+
+test("item 4: a rejected value never reaches osascript or any message", async () => {
+	for (const bad of ["short", "has space 1234567890"]) {
+		const h = setup({ clipboard: bad });
+		await h.run("spotify", "setup");
+		assert.equal(h.notes.at(-1)![1], "error");
+		assert.ok(!h.notes.some(([m]) => m.includes(bad)), "value not shown");
+		assert.ok(!h.execs.some(([c]) => c === "osascript"), "no osascript call");
+		assert.equal(h.clipboard, bad, "clipboard untouched");
+	}
+});
+
+test("N3: when the clipboard cannot be cleared, setup says so instead of claiming it", async () => {
+	const h = setup({ clipboard: "CLIENTID1234567890ab", clearFails: true });
+	await h.run("spotify", "setup");
+	const [message, level] = h.notes.at(-1)!;
+	assert.equal(level, "warning");
+	assert.match(message, /could not clear the clipboard/i);
+	assert.ok(!/and cleared the clipboard/.test(message));
+	assert.ok(!message.includes("CLIENTID1234567890ab"));
+});
+
+test("N4: the settings file is private (600)", async () => {
+	const h = setup();
+	await h.run("spotify", "sidebar off");
+	assert.equal(statSync(join(h.dir, "gentle-spotify.json")).mode & 0o777, 0o600);
 });

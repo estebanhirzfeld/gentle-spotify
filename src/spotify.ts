@@ -11,7 +11,7 @@
  * and playback goes through osascript on the local app.
  */
 import { execFile } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // ---------------------------------------------------------------- types
@@ -141,6 +141,12 @@ export function parsePlayArgs(args: string): { query: string; artist: string | u
 
 // ----------------------------------------------------------- credentials
 
+/** Creates the config dir if needed and tightens it to 700 even when it already existed. */
+function ensurePrivateDir(dir: string): void {
+	mkdirSync(dir, { recursive: true, mode: 0o700 });
+	chmodSync(dir, 0o700);
+}
+
 function credentialsPath(dir: string): string {
 	return join(dir, "credentials");
 }
@@ -178,7 +184,7 @@ export function saveCredential(dir: string, rawValue: string, field?: Credential
 	const target: CredentialField = field ?? (credentialStatus(dir).clientId === 0 ? "clientId" : "clientSecret");
 	const key = KEYS[target];
 
-	mkdirSync(dir, { recursive: true, mode: 0o700 });
+	ensurePrivateDir(dir);
 	const file = credentialsPath(dir);
 	const current = existsSync(file) ? readFileSync(file, "utf8") : CREDENTIALS_TEMPLATE;
 	let replaced = false;
@@ -193,7 +199,8 @@ export function saveCredential(dir: string, rawValue: string, field?: Credential
 	if (!replaced) next.push(`${key}=${value}`);
 
 	const tmp = `${file}.tmp`;
-	writeFileSync(tmp, `${next.join("\n")}\n`, { mode: 0o600 });
+	rmSync(tmp, { force: true }); // a stale temp file could carry a wider mode
+	writeFileSync(tmp, `${next.join("\n")}\n`, { mode: 0o600, flag: "wx" });
 	chmodSync(tmp, 0o600);
 	renameSync(tmp, file);
 	return target;
@@ -312,7 +319,7 @@ export function createSpotify(deps: SpotifyDeps) {
 		const body = (await response.json()) as { access_token?: string; expires_in?: number };
 		if (!body.access_token) throw new SpotifyError("Spotify returned no access token.");
 
-		mkdirSync(deps.configDir, { recursive: true, mode: 0o700 });
+		ensurePrivateDir(deps.configDir);
 		const expiresAt = nowSeconds + (body.expires_in ?? 0) - 60;
 		writeFileSync(tokenFile, `${JSON.stringify({ access_token: body.access_token, expires_at: expiresAt })}\n`, {
 			mode: 0o600,

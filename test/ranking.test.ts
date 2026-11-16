@@ -78,3 +78,11 @@ test("parsePlayArgs splits --artist from the query", () => {
 		artist: "Soda Stereo",
 	});
 });
+
+test("item 3: parseTrackRef never lets quotes, backslashes or newlines through", () => {
+	for (const bad of ['spotify:track:abc"&quit', "spotify:track:ab\nc", "spotify:track:abc\\", 'https://open.spotify.com/track/ab"c', "spotify:track:"]) {
+		assert.equal(parseTrackRef(bad), null, JSON.stringify(bad));
+	}
+	// Surrounding whitespace is trimmed; what comes out is always a clean URI.
+	assert.equal(parseTrackRef("spotify:track:abc\n"), "spotify:track:abc");
+});
